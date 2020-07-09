@@ -96,6 +96,42 @@ describe LogStash::Filters::Ldap do
     end
   end
 
+  describe "custom port" do
+    let(:plugin) { ::LogStash::Filters::Ldap.new("ldap_filter" => "ou=mathematicians", "host" => "#{@ldap_host}", "base_dn" => "#{@base_dn}", "port" => 12345) }
+    before do
+      allow(plugin.logger).to receive(:info).with(any_args)
+    end
+
+    it "should use the custom port" do
+      plugin.register
+      expect(plugin.logger).to have_received(:info).with("binding to #{@ldap_host}:#{12345}") # there is probably a better way to test this
+    end
+  end
+
+  describe "default ssl port" do
+    let(:plugin) { ::LogStash::Filters::Ldap.new("ldap_filter" => "ou=mathematicians", "host" => "#{@ldap_host}", "base_dn" => "#{@base_dn}", "ssl" => true) }
+    before do
+      allow(plugin.logger).to receive(:info).with(any_args)
+    end
+
+    it "should use the custom port" do
+      plugin.register
+      expect(plugin.logger).to have_received(:info).with("binding to #{@ldap_host}:#{636}") # there is probably a better way to test this
+    end
+  end
+
+  describe "default non-ssl port" do
+    let(:plugin) { ::LogStash::Filters::Ldap.new("ldap_filter" => "ou=mathematicians", "host" => "#{@ldap_host}", "base_dn" => "#{@base_dn}", "ssl" => false) }
+    before do
+      allow(plugin.logger).to receive(:info).with(any_args)
+    end
+
+    it "should use the custom port" do
+      plugin.register
+      expect(plugin.logger).to have_received(:info).with("binding to #{@ldap_host}:#{389}") # there is probably a better way to test this
+    end
+  end
+
   describe "simple search filter" do
     let(:config) do <<-CONFIG
       filter {

@@ -26,7 +26,7 @@ class LogStash::Filters::Ldap < LogStash::Filters::Base
 
   config :host, :validate => :string, :required => true
   config :ssl, :validate => :boolean, :required => false, :default => false
-  config :port, :validate => :number, :required => false, :default => (if @ssl then 636 else 389 end)
+  config :port, :validate => :number, :required => false, :default => nil
 
   config :bind_dn, :validate => :string, :required => false
   config :bind_password, :validate => :password, :required => !@bind_dn.nil?
@@ -112,11 +112,12 @@ class LogStash::Filters::Ldap < LogStash::Filters::Base
       Net::LDAP.new
     end
     @ldap.host = @host
-    @ldap.port = @port
+    @ldap.port = @port || if @ssl then 636 else 389 end
     @ldap.auth @bind_dn, @bind_password.value if !@bind_dn.nil?
 
     # Check the state of the connection
     begin
+      @logger.info("binding to #{@ldap.host}:#{@ldap.port}")
       if !@ldap.bind()
         raise(@ldap.get_operation_result.error_message)
       end
