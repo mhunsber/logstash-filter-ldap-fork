@@ -6,6 +6,7 @@
 - made ldap querying more flexible
   - removed `identifier_value`, `identifier_key` and `identifier_type`
   - added `ldap_filter` which can be passed as a sprintf string.
+- `base_dn` can use sprintf format.
 - changed `no_tag_on_failure` boolean to use the more common `tag_on_failure` array setting
 - tests don't require an ldap server
 - combined `ldap_port` and `ldaps_port` to a single `port` setting

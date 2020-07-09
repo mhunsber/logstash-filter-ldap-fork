@@ -142,23 +142,24 @@ class LogStash::Filters::Ldap < LogStash::Filters::Base
     else
       @ldap_filter
     end
+    search_path = event.sprintf(@base_dn)
     cached = false
 
     if @use_cache
 
       # Check if the identifier is cached already via it's hash value
-      identifier_hash = hashIdentifier(@host, @port, ldap_filter_string)
+      identifier_hash = hashIdentifier(@host, @port, search_path, ldap_filter_string)
 
       # Get the cache result
       res = @Buffer.get(identifier_hash)
       if res.nil?
-        res, exitstatus = ldapsearch(ldap_filter_string)
+        res, exitstatus = ldapsearch(search_path, ldap_filter_string)
         # Store the result for futher use
         @Buffer.cache(identifier_hash, res)
       end
 
     else
-      res, exitstatus = ldapsearch(ldap_filter_string)
+      res, exitstatus = ldapsearch(search_path, ldap_filter_string)
     end
 
     # Add the result fetched from the database into current event
@@ -182,17 +183,18 @@ class LogStash::Filters::Ldap < LogStash::Filters::Base
 
   # Create an unique hash for an event
   private
-  def hashIdentifier(host, port, ldap_filter)
+  def hashIdentifier(host, port, search_path, ldap_filter)
     md5 = Digest::MD5.new
     md5.update(host)
     md5.update(port.to_s)
+    md5.update(search_path)
     md5.update(ldap_filter)
     return md5.hexdigest
   end
 
   # Search LDAP attributes of the object
   private
-  def ldapsearch(filter_string)
+  def ldapsearch(search_path, filter_string)
     @logger.debug? && @logger.debug("Search for LDAP '#{filter_string}'")
     exitstatus = @SUCCESS
     ret = {}
@@ -203,7 +205,7 @@ class LogStash::Filters::Ldap < LogStash::Filters::Base
     matches = 0
 
     begin
-      @ldap.search( :base => @base_dn, :filter => full_filter, :attributes => @attributes) do |entry|
+      @ldap.search( :base => search_path, :filter => full_filter, :attributes => @attributes) do |entry|
         matches += 1
         if !@match_first.nil? && matches > @match_first
           break

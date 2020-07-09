@@ -264,6 +264,28 @@ describe LogStash::Filters::Ldap do
     end
   end
 
+  describe "base_dn using sprinf format" do
+    let(:config) do <<-CONFIG
+      filter {
+        ldap {
+          host => "#{@ldap_host}"
+          base_dn => "%{message}"
+          ldap_filter => "uid=tesla"
+          include_error_message => true
+        }
+      }
+    CONFIG
+    end
+
+    before do
+      allow_any_instance_of(Net::LDAP).to receive(:search).with(hash_including(:base => "#{@base_dn}")).and_yield(@tesla_entry)
+    end
+
+    sample("message" => "dc=example,dc=com") do
+      expect(subject.get('[ldap][uid]')).to eq(['tesla'])
+    end
+  end
+
   describe "using group membership" do
     let(:config) do <<-CONFIG
       filter {
