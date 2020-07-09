@@ -199,12 +199,11 @@ class LogStash::Filters::Ldap < LogStash::Filters::Base
     exitstatus = @SUCCESS
     ret = {}
 
-    full_filter = Net::LDAP::Filter.construct(filter_string)
-
     # Launch the request
     matches = 0
 
     begin
+      full_filter = Net::LDAP::Filter.construct(filter_string)
       @ldap.search( :base => search_path, :filter => full_filter, :attributes => @attributes) do |entry|
         matches += 1
         if !@match_first.nil? && matches > @match_first

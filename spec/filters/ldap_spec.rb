@@ -132,6 +132,26 @@ describe LogStash::Filters::Ldap do
     end
   end
 
+  describe "filter syntax error handling" do
+    let(:plugin) { ::LogStash::Filters::Ldap.new("ldap_filter" => "a%{bad\\filt*er", "host" => "#{@ldap_host}", "base_dn" => "#{@base_dn}", "ssl" => false) }
+    let(:event) { ::LogStash::Event.new }
+    before do
+      plugin.register
+      allow(plugin.logger).to receive(:error).with(any_args)
+    end
+
+    it "should not throw an error when filtering" do
+      expect do
+        plugin.filter(event)
+      end.not_to raise_error
+    end
+
+    it "should log an error" do
+      plugin.filter(event)
+      expect(plugin.logger).to have_received(:error).with(/Invalid filter syntax/)
+    end
+  end
+
   describe "simple search filter" do
     let(:config) do <<-CONFIG
       filter {
