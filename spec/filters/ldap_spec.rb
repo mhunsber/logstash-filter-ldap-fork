@@ -2,6 +2,8 @@
 
 require_relative '../spec_helper'
 require "logstash/filters/ldap"
+require 'net/ldap/entry'
+require 'net/ldap'
 
 # We disable warning for warning of others dependencies
 $VERBOSE = nil
@@ -11,548 +13,288 @@ describe LogStash::Filters::Ldap do
   # You need to set-up all those environement variables to
   # test this plugin using "bundle exec rspect"
   before(:each) do
-    @ldap_host=ENV["ldap_host"]
-    @ldap_port=ENV["ldap_port"]
-    @ldaps_port=ENV["ldaps_port"]
-    @ldap_username=ENV["ldap_username"]
-    @ldap_password=ENV["ldap_password"]
-    @ldap_search_dn=ENV["ldap_search_dn"]
+    @ldap_host='localhost'
+    @bind_dn='cn=user,dc=example,dc=com'
+    @bind_password='password'
+    @base_dn='dc=example,dc=com'
+    tesla_ldif = <<-LDIF.gsub(/^\s+/, "")
+      dn: uid=tesla,dc=example,dc=com
+      objectClass: inetOrgPerson
+      objectClass: organizationalPerson
+      objectClass: person
+      objectClass: top
+      objectClass: posixAccount
+      cn: Nikola Tesla
+      sn: Tesla
+      uid: tesla
+      mail: tesla@ldap.forumsys.com
+      uidNumber: 88888
+      gidNumber: 99999
+      homeDirectory: home
+    LDIF
+    lovelace_ldif = <<-LDIF.gsub(/^\s+/, "")
+      dn: CN=ada lovelace,OU=users,OU=TESTCASE,DC=example,DC=com
+      objectClass: top
+      objectClass: person
+      objectClass: organizationalPerson
+      objectClass: user
+      cn: ada lovelace
+      sn: lovelace
+      givenName: ada
+      distinguishedName: CN=ada lovelace,OU=users,OU=TESTCASE,DC=example,DC=com
+      displayName: ada lovelace
+      name: ada lovelace
+      objectGUID:: gBSJAzNWa0SCOG1EAFGFWA==
+      primaryGroupID: 33616
+      objectSid:: AQUAAAAAAAUVAAAAbSfj5gFx/GTiT1LyT4MAAA==
+      accountExpires: 9223372036854775807
+      sAMAccountName: testlovelace
+      sAMAccountType: 805306368
+      userPrincipalName: testlovelace@example.com
+      objectCategory: CN=Person,CN=Schema,CN=Configuration,DC=example,DC=com
+    LDIF
+    membership_ldif = <<-LDIF.gsub(/^\s+/, "")
+      dn: uid=user,dc=example,dc=com
+      objectClass: person
+      objectClass: top
+      objectClass: posixAccount
+      cn: User of a Group
+      sn: User
+      uid: user
+      memberOf: cn=group1,ou=test,dc=example,dc=com
+      memberOf: cn=group2,ou=foo,dc=example,dc=com
+      memberOf: cn=group3,ou=bar,dc=example,dc=com
+      memberOf: cn=group4,ou=fizz,dc=example,dc=com
+      memberOf: cn=group5,ou=buzz,dc=example,dc=com
+    LDIF
+    @membership_entry = Net::LDAP::Entry.from_single_ldif_string(membership_ldif)
+    @lovelace_entry = Net::LDAP::Entry.from_single_ldif_string(lovelace_ldif)
+    @tesla_entry = Net::LDAP::Entry.from_single_ldif_string(tesla_ldif)
+    allow_any_instance_of(Net::LDAP).to receive(:bind).with(no_args).and_yield(true)
+    allow_any_instance_of(Net::LDAP).to receive(:search).with(any_args)
   end
 
+  describe "anonymous authentication" do
+    let(:plugin) { ::LogStash::Filters::Ldap.new("ldap_filter" => "ou=mathematicians", "host" => "#{@ldap_host}", "base_dn" => "#{@base_dn}") }
+    before do
+      expect_any_instance_of(Net::LDAP).not_to receive(:auth).with(any_args)
+    end
 
-  describe "check simple search" do
+    it "should not call the auth method" do
+      plugin.register
+    end
+  end
+
+  describe "simple authentication" do
+    let(:plugin) { ::LogStash::Filters::Ldap.new("ldap_filter" => "ou=mathematicians", "host" => "#{@ldap_host}", "base_dn" => "#{@base_dn}", "bind_dn" => "#{@bind_dn}", "bind_password" => "#{@bind_password}") }
+    before do
+      expect_any_instance_of(Net::LDAP).to receive(:auth).with(@bind_dn, @bind_password)
+    end
+
+    it "should call the auth function" do
+      plugin.register
+    end
+  end
+
+  describe "simple search filter" do
     let(:config) do <<-CONFIG
       filter {
         ldap {
-          identifier_value => "u501565"
           host => "#{@ldap_host}"
-          ldap_port => "#{@ldap_port}"
-          username => "#{@ldap_username}"
-          password => "#{@ldap_password}"
-          search_dn => "#{@ldap_search_dn}"
-          attributes => ['givenName', 'sn']
+          base_dn => "#{@base_dn}"
+          ldap_filter => "uid=tesla"
+          include_error_message => true
         }
       }
-      CONFIG
+    CONFIG
     end
 
-    sample("test" => "test" ) do
-      expect(subject).to include('ldap')
-
-      expect(subject.get('ldap')).to include('givenname')
-      expect(subject.get('ldap')).to include('sn')
-
-      expect(subject.get('ldap')).not_to include("dn")
-      expect(subject.get('ldap')).not_to include("error")
-      expect(subject).not_to include('tags')
-
-      expect(subject.get("ldap")["givenname"]).to eq("VALENTIN")
-      expect(subject.get("ldap")["sn"]).to eq("BOURDIER")
+    before do
+      allow_any_instance_of(Net::LDAP).to receive(:search).with(hash_including(:filter => Net::LDAP::Filter.construct('uid=tesla'))).and_yield(@tesla_entry)
     end
 
-    sample("test" => "test2" ) do
-      expect(subject).to include('ldap')
-
-      expect(subject.get('ldap')).to include('givenname')
-      expect(subject.get('ldap')).to include('sn')
-
-      expect(subject.get('ldap')).not_to include("error")
-      expect(subject).not_to include('tags')
-
-      expect(subject.get("ldap")["givenname"]).to eq("VALENTIN")
-      expect(subject.get("ldap")["sn"]).to eq("BOURDIER")
+    sample("message" => "some text") do
+      expect(subject.get('[ldap][uid]')).to eq(['tesla'])
+      expect(subject.get('[ldap][sn]')).to eq(['Tesla'])
+      expect(subject.get('[ldap][cn]')).to eq(['Nikola Tesla'])
+      expect(subject.get('[ldap][mail]')).to eq(['tesla@ldap.forumsys.com'])
+      expect(subject.get('[ldap][uidnumber]')).to eq(['88888'])
+      expect(subject.get('[ldap][gidnumber]')).to eq(['99999'])
+      expect(subject.get('[ldap][homedirectory]')).to eq(['home'])
+      expect(subject.get('[ldap][objectclass]')).to include('inetOrgPerson','organizationalPerson','person','top','posixAccount')
     end
   end
 
-  describe "check simple search with persistant cache" do
-
-    cache_path = "/tmp/test_cache"
-    File.delete(cache_path) if File.exist?(cache_path)
-
+  describe "search with multiple matches" do
     let(:config) do <<-CONFIG
       filter {
         ldap {
-          identifier_value => "u501565"
           host => "#{@ldap_host}"
-          ldap_port => "#{@ldap_port}"
-          username => "#{@ldap_username}"
-          password => "#{@ldap_password}"
-          search_dn => "#{@ldap_search_dn}"
-          attributes => ['givenName', 'sn']
-          use_cache => true
-          disk_cache_filepath => "#{@cache_path}"
-          disk_cache_schedule => "1"
+          base_dn => "#{@base_dn}"
+          ldap_filter => "(|(uid=tesla)(sAMAccountName=testlovelace))"
+          include_error_message => true
         }
       }
-      CONFIG
+    CONFIG
     end
 
-    sample("test" => "test" ) do
+    before do
+      allow_any_instance_of(Net::LDAP).to receive(:search).with(hash_including(:filter => Net::LDAP::Filter.construct("(|(uid=tesla)(sAMAccountName=testlovelace))"))).and_yield(@tesla_entry).and_yield(@lovelace_entry)
     end
 
-    sample("test" => "test" ) do
-      sleep(10)
-      expect(Pathname(cache_path).exist?).to eq(true)
+    sample("message" => "some text") do
+      expect(subject.get('[ldap][uid]')).to include('tesla')
+      expect(subject.get('[ldap][sn]')).to include('Tesla','lovelace')
+      expect(subject.get('[ldap][cn]')).to include('Nikola Tesla', 'ada lovelace')
+      expect(subject.get('[ldap][mail]')).to include('tesla@ldap.forumsys.com')
+      expect(subject.get('[ldap][uidnumber]')).to include('88888')
+      expect(subject.get('[ldap][gidnumber]')).to include('99999')
+      expect(subject.get('[ldap][homedirectory]')).to include('home')
+      expect(subject.get('[ldap][name]')).to include('ada lovelace')
+      expect(subject.get('[ldap][samaccountname]')).to include('testlovelace')
+      expect(subject.get('[ldap][objectclass]')).to include('inetOrgPerson','organizationalPerson','person','top','posixAccount', 'user')
     end
-
   end
 
-  describe "check simple search without attributes" do
+  describe "search with multiple matches and limited to one" do
     let(:config) do <<-CONFIG
       filter {
         ldap {
-          identifier_value => "u501565"
           host => "#{@ldap_host}"
-          ldap_port => "#{@ldap_port}"
-          username => "#{@ldap_username}"
-          password => "#{@ldap_password}"
-          search_dn => "#{@ldap_search_dn}"
+          base_dn => "#{@base_dn}"
+          ldap_filter => "(|(uid=tesla)(sAMAccountName=testlovelace))"
+          include_error_message => true
+          match_first => 1
         }
       }
-      CONFIG
+    CONFIG
     end
 
-    sample("test" => "test" ) do
-      expect(subject).to include('ldap')
+    before do
+      allow_any_instance_of(Net::LDAP).to receive(:search).with(hash_including(:filter => Net::LDAP::Filter.construct("(|(uid=tesla)(sAMAccountName=testlovelace))"))).and_yield(@tesla_entry).and_yield(@lovelace_entry)
+    end
 
-      expect(subject.get('ldap')).to include('givenname')
-      expect(subject.get('ldap')).to include('homedirectory')
-      expect(subject.get('ldap')).to include('gecos')
-      expect(subject.get('ldap')).to include('sn')
-
-      expect(subject.get('ldap')).not_to include("error")
-      expect(subject).not_to include('tags')
-
-      expect(subject.get("ldap")["givenname"]).to eq("VALENTIN")
-      expect(subject.get("ldap")["gecos"]).to eq("VALENTIN BOURDIER")
-      expect(subject.get("ldap")["homedirectory"]).to eq("/users/login/u501565")
-      expect(subject.get("ldap")["sn"]).to eq("BOURDIER")
+    sample("message" => "some text") do
+      expect(subject.get('[ldap][uid]')).to include('tesla')
+      expect(subject.get('[ldap][sn]')).to include('Tesla')
+      expect(subject.get('[ldap][sn]')).not_to include('lovelace')
+      expect(subject.get('[ldap][samaccountname]')).to eq(nil)
     end
   end
 
-
-  describe "check simple search with ssl" do
+  describe "escaped sprintf values" do
     let(:config) do <<-CONFIG
       filter {
         ldap {
-          identifier_value => "u501565"
           host => "#{@ldap_host}"
-          use_ssl => true
-          ldaps_port => "#{@ldaps_port}"
-          username => "#{@ldap_username}"
-          password => "#{@ldap_password}"
-          search_dn => "#{@ldap_search_dn}"
-          attributes => ['givenName', 'sn']
+          base_dn => "#{@base_dn}"
+          ldap_filter => "(cn=%{message})"
+          include_error_message => true
+          escape_sprintf_values => true
         }
       }
-      CONFIG
+    CONFIG
     end
 
-    sample("test" => "test" ) do
-      expect(subject).to include('ldap')
-
-      expect(subject.get('ldap')).to include('givenname')
-      expect(subject.get('ldap')).to include('sn')
-
-      expect(subject.get('ldap')).not_to include("error")
-      expect(subject).not_to include('tags')
-
-      expect(subject.get("ldap")["givenname"]).to eq("VALENTIN")
-      expect(subject.get("ldap")["sn"]).to eq("BOURDIER")
+    before do
+      allow_any_instance_of(Net::LDAP).to receive(:search).with(hash_including(:filter => Net::LDAP::Filter.construct('(cn=Nikola*)'))).and_yield(@tesla_entry)
     end
 
-    sample("test" => "test2" ) do
-      expect(subject).to include('ldap')
-
-      expect(subject.get('ldap')).to include('givenname')
-      expect(subject.get('ldap')).to include('sn')
-
-      expect(subject.get('ldap')).not_to include("error")
-      expect(subject).not_to include('tags')
-
-      expect(subject.get("ldap")["givenname"]).to eq("VALENTIN")
-      expect(subject.get("ldap")["sn"]).to eq("BOURDIER")
+    sample("message" => "Nikola*") do
+      expect(subject.get('[ldap][uid]')).not_to eq(['tesla'])
     end
   end
 
-  describe "check simple search with cache" do
+  describe "unescaped sprintf values" do
     let(:config) do <<-CONFIG
       filter {
         ldap {
-          identifier_value => "u501565"
           host => "#{@ldap_host}"
-          ldap_port => "#{@ldap_port}"
-          username => "#{@ldap_username}"
-          password => "#{@ldap_password}"
-          search_dn => "#{@ldap_search_dn}"
-          attributes => ['givenName', 'sn']
-          use_cache => "true"
+          base_dn => "#{@base_dn}"
+          ldap_filter => "(cn=%{message})"
+          include_error_message => true
+          escape_sprintf_values => false
         }
       }
-      CONFIG
+    CONFIG
     end
 
-    sample("test" => "test" ) do
-      expect(subject).to include('ldap')
-
-      expect(subject.get('ldap')).to include('givenname')
-      expect(subject.get('ldap')).to include('sn')
-
-      expect(subject.get('ldap')).not_to include("error")
-      expect(subject).not_to include('tags')
-
-      expect(subject.get("ldap")["givenname"]).to eq("VALENTIN")
-      expect(subject.get("ldap")["sn"]).to eq("BOURDIER")
+    before do
+      allow_any_instance_of(Net::LDAP).to receive(:search).with(hash_including(:filter => Net::LDAP::Filter.construct("(cn=Nikola*)"))).and_yield(@tesla_entry)
     end
 
-    sample("test" => "test2" ) do
-      expect(subject).to include('ldap')
-
-      expect(subject.get('ldap')).to include('givenname')
-      expect(subject.get('ldap')).to include('sn')
-
-      expect(subject.get('ldap')).not_to include("error")
-      expect(subject).not_to include('tags')
-
-      expect(subject.get("ldap")["givenname"]).to eq("VALENTIN")
-      expect(subject.get("ldap")["sn"]).to eq("BOURDIER")
+    sample("message" => "Nikola*") do
+      expect(subject.get('[ldap][uid]')).to eq(['tesla'])
     end
   end
 
-
-  describe "check simple search with custom object type" do
+  describe "using group membership" do
     let(:config) do <<-CONFIG
       filter {
         ldap {
-          identifier_value => "u501565"
-          identifier_type => "person"
           host => "#{@ldap_host}"
-          ldap_port => "#{@ldap_port}"
-          username => "#{@ldap_username}"
-          password => "#{@ldap_password}"
-          search_dn => "#{@ldap_search_dn}"
-          attributes => ['givenName', 'sn']
+          base_dn => "#{@base_dn}"
+          ldap_filter => "(uid=user)"
+          include_error_message => true
+          extract_membership => true
         }
       }
-      CONFIG
+    CONFIG
     end
 
-    sample("test" => "test" ) do
-      expect(subject).to include('ldap')
+    before do
+      allow_any_instance_of(Net::LDAP).to receive(:search).with(hash_including(:filter => Net::LDAP::Filter.construct("(uid=user)"))).and_yield(@membership_entry)
+    end
 
-      expect(subject.get('ldap')).to include('givenname')
-      expect(subject.get('ldap')).to include('sn')
-
-      expect(subject.get('ldap')).not_to include("error")
-      expect(subject).not_to include('tags')
-
-      expect(subject.get("ldap")["givenname"]).to eq("VALENTIN")
-      expect(subject.get("ldap")["sn"]).to eq("BOURDIER")
+    sample("message" => "some text") do
+      expect(subject.get('[ldap][membership]')).to include('group1', 'group2', 'group3', 'group4', 'group5')
     end
   end
 
-  describe "check with false ssl settings" do
+  describe "without using group membership" do
     let(:config) do <<-CONFIG
       filter {
         ldap {
-          identifier_value => "u501565"
-          use_ssl => true
           host => "#{@ldap_host}"
-          ldaps_port => "1234"
-          username => "#{@ldap_username}"
-          password => "#{@ldap_password}"
-          search_dn => "#{@ldap_search_dn}"
-          enable_error_logging => true
+          base_dn => "#{@base_dn}"
+          ldap_filter => "(uid=user)"
+          include_error_message => true
+          extract_membership => false
         }
       }
-      CONFIG
+    CONFIG
     end
 
-    sample("test" => "test" ) do
-      expect(subject).to include('ldap')
+    before do
+      allow_any_instance_of(Net::LDAP).to receive(:search).with(hash_including(:filter => Net::LDAP::Filter.construct("(uid=user)"))).and_yield(@membership_entry)
+    end
 
-      expect(subject.get('ldap')).to include("error")
-      expect(subject).to include('tags')
-
-      expect(subject.get('ldap')).not_to include('givenname')
-      expect(subject.get('ldap')).not_to include('sn')
-
-      expect(subject.get("tags")).to eq(["LDAP_ERROR"])
-      expect(subject.get("ldap")["error"]).to match("Bad file descriptor - No message available")
+    sample("message" => "some text") do
+      expect(subject.get('[ldap][membership]')).to eq(nil)
     end
   end
 
-
-  describe "check simple search with custom identifier" do
+  describe "microsoft AD compatibility" do
     let(:config) do <<-CONFIG
       filter {
         ldap {
-          identifier_key => "homeDirectory"
-          identifier_value => "/users/login/u501565"
           host => "#{@ldap_host}"
-          ldap_port => "#{@ldap_port}"
-          username => "#{@ldap_username}"
-          password => "#{@ldap_password}"
-          search_dn => "#{@ldap_search_dn}"
-          attributes => ['givenName', 'sn']
+          base_dn => "#{@base_dn}"
+          ldap_filter => "(sAMAccountName=testlovelace)"
+          include_error_message => true
         }
       }
-      CONFIG
+    CONFIG
     end
 
-    sample("test" => "test" ) do
-      expect(subject).to include('ldap')
+    before do
+      allow_any_instance_of(Net::LDAP).to receive(:search).with(hash_including(:filter => Net::LDAP::Filter.construct("(sAMAccountName=testlovelace)"))).and_yield(@lovelace_entry)
+    end
 
-      expect(subject.get('ldap')).to include('givenname')
-      expect(subject.get('ldap')).to include('sn')
-
-      expect(subject.get('ldap')).not_to include("error")
-      expect(subject).not_to include('tags')
-
-      expect(subject.get("ldap")["givenname"]).to eq("VALENTIN")
-      expect(subject.get("ldap")["sn"]).to eq("BOURDIER")
+    sample("message" => "some text") do
+      expect(subject.get('[ldap][objectsid]')).to include('S-1-5-21-3873646445-1694265601-4065480674-33615')
+      expect(subject.get('[ldap][objectguid]')).to include('03891480-5633-446b-8238-6d4400518558')
     end
   end
-
-
-  describe "check simple search with customs attributs" do
-    let(:config) do <<-CONFIG
-      filter {
-        ldap {
-          identifier_value => "u501565"
-          host => "#{@ldap_host}"
-          ldap_port => "#{@ldap_port}"
-          username => "#{@ldap_username}"
-          password => "#{@ldap_password}"
-          search_dn => "#{@ldap_search_dn}"
-          attributes => ["cn", "uidnumber", "gidnumber"]
-        }
-      }
-      CONFIG
-    end
-
-    sample("test" => "test" ) do
-      expect(subject).to include('ldap')
-
-      expect(subject.get('ldap')).to include('cn')
-      expect(subject.get('ldap')).to include('uidnumber')
-      expect(subject.get('ldap')).to include('gidnumber')
-
-      expect(subject.get('ldap')).not_to include('givenname')
-      expect(subject.get('ldap')).not_to include('sn')
-      expect(subject.get('ldap')).not_to include("error")
-      expect(subject.get('ldap')).not_to include('tags')
-
-      expect(subject.get('ldap')).not_to include("error")
-      expect(subject).not_to include('tags')
-
-      expect(subject.get("ldap")["cn"]).to eq("VALENTIN BOURDIER - U501565")
-      expect(subject.get("ldap")["uidnumber"]).to eq("479615")
-      expect(subject.get("ldap")["gidnumber"]).to eq("9043")
-    end
-  end
-
-
-  describe "check bad ldap host" do
-    let(:config) do <<-CONFIG
-      filter {
-        ldap {
-          identifier_value => "u501565"
-          host => "babdsfafds.org"
-          ldap_port => "#{@ldap_port}"
-          username => "test"
-          password => "test"
-          search_dn => "#{@ldap_search_dn}"
-          attributes => ['givenName', 'sn']
-          enable_error_logging => true
-        }
-      }
-      CONFIG
-    end
-
-    sample("test" => "test" ) do
-      expect(subject).to include('ldap')
-
-      expect(subject.get('ldap')).to include("error")
-      expect(subject).to include('tags')
-
-      expect(subject.get('ldap')).not_to include('givenname')
-      expect(subject.get('ldap')).not_to include('sn')
-
-      expect(subject.get("tags")).to eq(["LDAP_ERROR"])
-      expect(subject.get("ldap")["error"]).to eq("getaddrinfo: name or service not known")
-    end
-  end
-
-
-  describe "check bad ldap host without error logging" do
-    let(:config) do <<-CONFIG
-      filter {
-        ldap {
-          identifier_value => "u501565"
-          host => "babdsfafds.org"
-          ldap_port => "#{@ldap_port}"
-          username => "test"
-          password => "test"
-          search_dn => "#{@ldap_search_dn}"
-          attributes => ['givenName', 'sn']
-        }
-      }
-      CONFIG
-    end
-
-    sample("test" => "test" ) do
-      expect(subject).to include('tags')
-
-      expect(subject).not_to include('ldap')
-
-      expect(subject.get("tags")).to eq(["LDAP_ERROR"])
-    end
-  end
-
-
-  describe "test bad search_dn" do
-    let(:config) do <<-CONFIG
-      filter {
-        ldap {
-          identifier_value => "u501565"
-          host => "#{@ldap_host}"
-          ldap_port => "#{@ldap_port}"
-          username => "#{@ldap_username}"
-          password => "#{@ldap_password}"
-          attributes => ['givenName', 'sn']
-          search_dn => "test"
-          enable_error_logging => true
-        }
-      }
-      CONFIG
-    end
-
-    sample("test" => "test" ) do
-      expect(subject).to include('ldap')
-
-      expect(subject.get('ldap')).to include("error")
-      expect(subject).to include('tags')
-
-      expect(subject.get('ldap')).not_to include('givenname')
-      expect(subject.get('ldap')).not_to include('sn')
-
-      expect(subject.get("tags")).to eq(["LDAP_ERROR"])
-      expect(subject.get("ldap")["error"]).to eq("invalid DN")
-    end
-  end
-
-
-  describe "test bad user/password couple" do
-    let(:config) do <<-CONFIG
-      filter {
-        ldap {
-          identifier_value => "u501565"
-          host => "#{@ldap_host}"
-          ldap_port => "#{@ldap_port}"
-          username => "test"
-          password => "test"
-          search_dn => "#{@ldap_search_dn}"
-          attributes => ['givenName', 'sn']
-          enable_error_logging => true
-        }
-      }
-      CONFIG
-    end
-
-    sample("test" => "test" ) do
-      expect(subject).to include('ldap')
-
-      expect(subject.get('ldap')).to include("error")
-      expect(subject).to include('tags')
-
-      expect(subject.get('ldap')).not_to include('givenname')
-      expect(subject.get('ldap')).not_to include('sn')
-
-      expect(subject.get("tags")).to eq(["LDAP_ERROR"])
-      expect(subject.get("ldap")["error"]).to eq("invalid DN")
-    end
-  end
-
-  describe "test bad user/password couple & no_tag" do
-    let(:config) do <<-CONFIG
-      filter {
-        ldap {
-          identifier_value => "u501565"
-          host => "#{@ldap_host}"
-          ldap_port => "#{@ldap_port}"
-          username => "test"
-          password => "test"
-          search_dn => "#{@ldap_search_dn}"
-          attributes => ['givenName', 'sn']
-          no_tag_on_failure => true
-        }
-      }
-      CONFIG
-    end
-
-    sample("test" => "test" ) do
-      expect(subject).not_to include('ldap')
-      expect(subject).not_to include('tags')
-    end
-  end
-
-  describe "check bad identifier user" do
-    let(:config) do <<-CONFIG
-      filter {
-        ldap {
-          identifier_value => "abcdefg"
-          host => "#{@ldap_host}"
-          ldap_port => "#{@ldap_port}"
-          username => "#{@ldap_username}"
-          password => "#{@ldap_password}"
-          search_dn => "#{@ldap_search_dn}"
-          attributes => ['givenName', 'sn']
-        }
-      }
-      CONFIG
-    end
-
-    sample("test" => "test" ) do
-      expect(subject).to include('tags')
-
-      expect(subject).not_to include('ldap')
-
-      expect(subject.get("tags")).to eq(["LDAP_NOT_FOUND"])
-    end
-  end
-
-
-  describe "check simple search with custom target" do
-    let(:config) do <<-CONFIG
-      filter {
-        ldap {
-          identifier_value => "u501565"
-          target => "myTarget"
-          host => "#{@ldap_host}"
-          ldap_port => "#{@ldap_port}"
-          username => "#{@ldap_username}"
-          password => "#{@ldap_password}"
-          search_dn => "#{@ldap_search_dn}"
-          attributes => ['givenName', 'sn']
-        }
-      }
-      CONFIG
-    end
-
-    sample("test" => "test" ) do
-      expect(subject).to include('myTarget')
-
-      expect(subject.get('myTarget')).to include('givenname')
-      expect(subject.get('myTarget')).to include('sn')
-
-      expect(subject.get('myTarget')).not_to include("error")
-      expect(subject).not_to include('tags')
-
-      expect(subject.get("myTarget")["givenname"]).to eq("VALENTIN")
-      expect(subject.get("myTarget")["sn"]).to eq("BOURDIER")
-    end
-  end
-
 
 end
