@@ -1,6 +1,6 @@
 # Logstash Plugin
 
-<!--[![Travis Build Status](https://travis-ci.org/logstash-plugins/logstash-filter-dns.svg)](https://travis-ci.org/logstash-plugins/logstash-filter-dns)-->
+[![Travis Build Status](https://travis-ci.org/mhunsber/logstash-filter-ldap.svg)](https://travis-ci.org/mhunsber/logstash-filter-ldap)
 
 This is a plugin for [Logstash](https://github.com/elastic/logstash).
 

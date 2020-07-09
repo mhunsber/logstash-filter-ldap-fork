@@ -1,16 +1,16 @@
 Gem::Specification.new do |s|
   s.name          = 'logstash-filter-ldap'
   s.version       = '0.3.1'
-  s.licenses      = ['Apache-2.0']
+  s.licenses      = [ 'Apache-2.0' ]
   s.summary       = 'Logstash filter to add attributes from ldap entries.'
   s.description   = 'This is a Logstash filter plugin to fetch LDAP information.'
   s.homepage      = 'https://github.com/mhunsber/logstash-filter-ldap'
-  s.authors       = ['Micah Hunsberger']
+  s.authors       = [ 'Valentin Bourdier', 'Micah Hunsberger' ]
   s.email         = 'malanhunsber@gmail.com'
-  s.require_paths = ['lib']
+  s.require_paths = [ 'lib' ]
 
   # Files
-  s.files = Dir['lib/**/*','spec/**/*','vendor/**/*','*.gemspec','*.md','CONTRIBUTORS','Gemfile','LICENSE','NOTICE.TXT']
+  s.files = Dir[ 'lib/**/*','spec/**/*','vendor/**/*','*.gemspec','*.md','CONTRIBUTORS','Gemfile','LICENSE','NOTICE.TXT' ]
    # Tests
   s.test_files = s.files.grep(%r{^(test|spec|features)/})
 
