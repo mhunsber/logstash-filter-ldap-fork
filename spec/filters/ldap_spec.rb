@@ -169,7 +169,7 @@ describe LogStash::Filters::Ldap do
       allow_any_instance_of(Net::LDAP).to receive(:search).with(hash_including(:filter => Net::LDAP::Filter.construct('uid=tesla'))).and_yield(@tesla_entry)
     end
 
-    sample("message" => "some text") do
+    sample({"message" => "some text"}) do
       expect(subject.get('[ldap][uid]')).to eq(['tesla'])
       expect(subject.get('[ldap][sn]')).to eq(['Tesla'])
       expect(subject.get('[ldap][cn]')).to eq(['Nikola Tesla'])
@@ -198,7 +198,7 @@ describe LogStash::Filters::Ldap do
       allow_any_instance_of(Net::LDAP).to receive(:search).with(hash_including(:filter => Net::LDAP::Filter.construct("(|(uid=tesla)(sAMAccountName=testlovelace))"))).and_yield(@tesla_entry).and_yield(@lovelace_entry)
     end
 
-    sample("message" => "some text") do
+    sample({"message" => "some text"}) do
       expect(subject.get('[ldap][uid]')).to include('tesla')
       expect(subject.get('[ldap][sn]')).to include('Tesla','lovelace')
       expect(subject.get('[ldap][cn]')).to include('Nikola Tesla', 'ada lovelace')
@@ -230,7 +230,7 @@ describe LogStash::Filters::Ldap do
       allow_any_instance_of(Net::LDAP).to receive(:search).with(hash_including(:filter => Net::LDAP::Filter.construct("(|(uid=tesla)(sAMAccountName=testlovelace))"))).and_yield(@tesla_entry).and_yield(@lovelace_entry)
     end
 
-    sample("message" => "some text") do
+    sample({"message" => "some text"}) do
       expect(subject.get('[ldap][uid]')).to include('tesla')
       expect(subject.get('[ldap][sn]')).to include('Tesla')
       expect(subject.get('[ldap][sn]')).not_to include('lovelace')
@@ -256,7 +256,7 @@ describe LogStash::Filters::Ldap do
       allow_any_instance_of(Net::LDAP).to receive(:search).with(hash_including(:filter => Net::LDAP::Filter.construct('(cn=Nikola*)'))).and_yield(@tesla_entry)
     end
 
-    sample("message" => "Nikola*") do
+    sample({"message" => "Nikola*"}) do
       expect(subject.get('[ldap][uid]')).not_to eq(['tesla'])
     end
   end
@@ -279,7 +279,7 @@ describe LogStash::Filters::Ldap do
       allow_any_instance_of(Net::LDAP).to receive(:search).with(hash_including(:filter => Net::LDAP::Filter.construct("(cn=Nikola*)"))).and_yield(@tesla_entry)
     end
 
-    sample("message" => "Nikola*") do
+    sample({"message" => "Nikola*"}) do
       expect(subject.get('[ldap][uid]')).to eq(['tesla'])
     end
   end
@@ -301,7 +301,7 @@ describe LogStash::Filters::Ldap do
       allow_any_instance_of(Net::LDAP).to receive(:search).with(hash_including(:base => "#{@base_dn}")).and_yield(@tesla_entry)
     end
 
-    sample("message" => "dc=example,dc=com") do
+    sample({"message" => "dc=example,dc=com"}) do
       expect(subject.get('[ldap][uid]')).to eq(['tesla'])
     end
   end
@@ -324,7 +324,7 @@ describe LogStash::Filters::Ldap do
       allow_any_instance_of(Net::LDAP).to receive(:search).with(hash_including(:filter => Net::LDAP::Filter.construct("(uid=user)"))).and_yield(@membership_entry)
     end
 
-    sample("message" => "some text") do
+    sample({"message" => "some text"}) do
       expect(subject.get('[ldap][membership]')).to include('group1', 'group2', 'group3', 'group4', 'group5')
     end
   end
@@ -347,7 +347,7 @@ describe LogStash::Filters::Ldap do
       allow_any_instance_of(Net::LDAP).to receive(:search).with(hash_including(:filter => Net::LDAP::Filter.construct("(uid=user)"))).and_yield(@membership_entry)
     end
 
-    sample("message" => "some text") do
+    sample({"message" => "some text"}) do
       expect(subject.get('[ldap][membership]')).to eq(nil)
     end
   end
@@ -369,7 +369,7 @@ describe LogStash::Filters::Ldap do
       allow_any_instance_of(Net::LDAP).to receive(:search).with(hash_including(:filter => Net::LDAP::Filter.construct("(sAMAccountName=testlovelace)"))).and_yield(@lovelace_entry)
     end
 
-    sample("message" => "some text") do
+    sample({"message" => "some text"}) do
       expect(subject.get('[ldap][objectsid]')).to include('S-1-5-21-3873646445-1694265601-4065480674-33615')
       expect(subject.get('[ldap][objectguid]')).to include('03891480-5633-446b-8238-6d4400518558')
     end
