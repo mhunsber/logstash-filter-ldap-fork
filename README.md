@@ -17,16 +17,6 @@ Logstash provides infrastructure to automatically generate documentation for thi
 
 ### Basic sample
 
-#### Input event
-
-```ruby
-{
-    "@timestamp" => 2018-02-25T10:04:22.338Z,
-    "@version" => "1",
-    "myUid" => "u501565"
-}
-```
-
 #### Logstash filter
 
 ```ruby
@@ -38,7 +28,18 @@ filter {
     bind_password => "password123"
     base_dn => "ou=users,dc=example,dc=com"
     ldap_filter => "uid=%{myUid}"
+    attributes => [ "givenName", "sn" ]
   }
+}
+```
+
+#### Input event
+
+```ruby
+{
+    "@timestamp" => 2018-02-25T10:04:22.338Z,
+    "@version" => "1",
+    "myUid" => "u501565"
 }
 ```
 
@@ -62,19 +63,34 @@ Need help? Try #logstash on freenode IRC or the <https://discuss.elastic.co/c/lo
 
 ## Developing
 
-### 1. Plugin Developement and Testing
+### 1. Plugin Development and Testing
 
-#### Code
+#### Setup
 
 - To get started, you'll need JRuby with the Bundler gem installed.
+  - One method is to use the vendor-supplied jdk/jruby from a logstash distribution.
+  - [Download Logstash from Elastic](https://www.elastic.co/downloads/logstash) and extract.
+  - Add the following to your environment
 
-- Create a new plugin or clone and existing from the GitHub [logstash-plugins](https://github.com/logstash-plugins) organization. We also provide [example plugins](https://github.com/logstash-plugins?query=example).
+    ```sh
+    export LOGSTASH_SOURCE="1"
+    export LOGSTASH_PATH="/path/to/logstash-<version>"
+    export LS_JAVA_HOME="$LOGSTASH_PATH/jdk"
+    PATH="${PATH}:$LOGSTASH_PATH/vendor/jruby/bin"
+    export JRUBY_OPTS="-Xregexp.interruptible=true -Xcompile.invokedynamic=true -Xjit.threshold=0 \
+      -J-XX:+UseParallelGC -J-XX:+PrintCommandLineFlags -v -W1 \
+      -J--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED \
+      -J--add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED \
+      -J--add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED \
+      -J--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED \
+      -J--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED"
+    ```
 
 - Install dependencies
 
-```sh
-bundle install
-```
+  ```sh
+  bundle install
+  ```
 
 #### Test
 
@@ -97,24 +113,20 @@ bundle exec rspec
 - Edit Logstash `Gemfile` and add the local plugin path, for example:
 
 ```ruby
-gem "logstash-filter-awesome", :path => "/your/local/logstash-filter-awesome"
+gem "logstash-filter-ldap", :path => "/your/local/logstash-filter-ldap"
 ```
 
 - Install plugin
 
 ```sh
-# Logstash 2.3 and higher
 bin/logstash-plugin install --no-verify
-
-# Prior to Logstash 2.3
-bin/plugin install --no-verify
 
 ```
 
 - Run Logstash with your plugin
 
 ```sh
-bin/logstash -e 'filter {awesome {}}'
+bin/logstash -e 'filter{ldap{}}'
 ```
 
 At this point any modifications to the plugin code will be applied to this local Logstash setup. After modifying the plugin, simply rerun Logstash.
@@ -126,18 +138,13 @@ You can use the same **2.1** method to run your plugin in an installed Logstash 
 - Build your plugin gem
 
 ```sh
-gem build logstash-filter-awesome.gemspec
+gem build logstash-filter-ldap.gemspec
 ```
 
 - Install the plugin from the Logstash home
 
 ```sh
-# Logstash 2.3 and higher
-bin/logstash-plugin install --no-verify
-
-# Prior to Logstash 2.3
-bin/plugin install --no-verify
-
+bin/logstash-plugin install --no-verify /path/to/logstash-filter-[version].gem
 ```
 
 - Start Logstash and proceed to test the plugin
